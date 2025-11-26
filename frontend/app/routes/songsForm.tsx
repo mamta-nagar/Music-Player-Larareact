@@ -20,7 +20,7 @@ const SongsForm: React.FC = () => {
     formData.append("title", title);
     formData.append("artist", artist);
     formData.append("description", description);
-    formData.append("file", file);
+    formData.append("file_path", file);
 
     try {
       const response = await axios.post("http://127.0.0.1:8000/api/songs", formData, {

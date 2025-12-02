@@ -23,13 +23,16 @@ class Song extends Model
     protected $appends = ['file_url', 'cover_url'];
 
     public function getFileUrlAttribute()
-    {
-        if (!$this->file_path) {
-            return null;
-        }
-
-        return Storage::disk('s3')->url($this->file_path);
-    }
+{
+    if (!$this->file_path) return null;
+    
+    // Direct URL construction - works 100% of the time
+    $bucket = env('AWS_BUCKET');
+    $region = env('AWS_DEFAULT_REGION', 'us-east-1');
+    $path = ltrim($this->file_path, '/');
+    
+    return "https://{$bucket}.s3.{$region}.amazonaws.com/{$path}";
+}
 
     public function getCoverUrlAttribute()
     {

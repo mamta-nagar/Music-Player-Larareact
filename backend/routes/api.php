@@ -103,7 +103,62 @@ Route::get('/test-s3-permissions', function() {
     } catch (\Exception $e) {
         return response()->json([
             'error' => $e->getMessage(),
-            'hint' => 'Add s3:PutObject permission to your IAM user'
+            'hint' => 'Add s3:PutObject permission tglkjrthklkjy your IAM user'
         ], 500);
     }
 });
+
+// Add this test route to verify everything:
+Route::get('/verify-s3-setup', function() {
+    $config = config('filesystems.disks.s3');
+    
+    return response()->json([
+        'bucket' => $config['bucket'],
+        'region' => $config['region'],
+        'has_visibility' => isset($config['visibility']) ? $config['visibility'] : 'Not set (Good!)',
+        'has_acl_options' => isset($config['options']['ACL']) ? 'YES (Remove this!)' : 'No (Good!)',
+        'throw_enabled' => $config['throw'] ?? false,
+        
+        // Test upload
+        'upload_test' => function() {
+            try {
+                $result = Storage::disk('s3')->put('test.txt', 'hello');
+                Storage::disk('s3')->delete('test.txt');
+                return $result ? 'SUCCESS ✅' : 'FAILED ❌';
+            } catch (\Exception $e) {
+                return 'ERROR: ' . $e->getMessage();
+            }
+        }
+    ]);
+});
+
+
+Route::get('/test-song-url/{id}', function($id) {
+    $song = Song::findOrFail($id);
+    
+    return response()->json([
+        'song_id' => $song->id,
+        'title' => $song->title,
+        'file_path' => $song->file_path,
+        'url_valid' => filter_var($song->file_path, FILTER_VALIDATE_URL) ? 'YES' : 'NO',
+        'test_fetch' => 'Try opening the URL in a new browser tab',
+    ]);
+});
+
+
+Route::get('/check-acl-status', function() {
+    try {
+        // Try to set visibility
+        Storage::disk('s3')->put('test-acl.txt', 'testing');
+        Storage::disk('s3')->setVisibility('test-acl.txt', 'public');
+        Storage::disk('s3')->delete('test-acl.txt');
+        
+        return response()->json(['acl_status' => 'ENABLED ✅']);
+    } catch (\Exception $e) {
+        return response()->json([
+            'acl_status' => 'DISABLED ❌',
+            'error' => $e->getMessage()
+        ]);
+    }
+});
+

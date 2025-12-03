@@ -153,6 +153,8 @@ export default function SpotifyLandingPage() {
     song.artist.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  
+
   return (
     <div className="flex h-screen bg-black text-white">
       {/* Sidebar */}

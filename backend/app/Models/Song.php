@@ -22,29 +22,23 @@ class Song extends Model
 
     protected $appends = ['file_url', 'cover_url'];
 
-    public function getFileUrlAttribute()
+public function getFileUrlAttribute()
 {
-    if (!$this->file_path) return null;
-    
-    // Direct URL construction - works 100% of the time
-    $bucket = env('AWS_BUCKET');
-    $region = env('AWS_DEFAULT_REGION', 'us-east-1');
-    $path = ltrim($this->file_path, '/');
-    
-    return "https://{$bucket}.s3.{$region}.amazonaws.com/{$path}";
+    // If already a full URL, return as-is
+    if (str_starts_with($this->file_path, 'http')) {
+        return $this->file_path;
+    }
+    // Otherwise, build the URL
+    return Storage::disk('s3')->url($this->file_path);
 }
 
-    public function getCoverUrlAttribute()
-    {
-        if (!$this->cover_image) {
-            return null;
-        }
-
-        return Storage::disk('s3')->url($this->cover_image);
+public function getCoverUrlAttribute()
+{
+    if (!$this->cover_image) return null;
+    
+    if (str_starts_with($this->cover_image, 'http')) {
+        return $this->cover_image;
     }
-
-    public function playlists()
-    {
-        return $this->belongsToMany(Playlist::class, 'playlist_song');
-    }
+    return Storage::disk('s3')->url($this->cover_image);
+}
 }

@@ -74,7 +74,7 @@ public function store(Request $request)
                 'bucket' => config('filesystems.disks.s3.bucket')
             ]);
 
-            // Try without 'public' visibility first
+            // Upload the file (works with ACLs disabled)
             $audioPath = Storage::disk('s3')->putFileAs(
                 'songs',
                 $audioFile,
@@ -84,8 +84,9 @@ public function store(Request $request)
             \Log::info('S3 upload result: ' . ($audioPath ?: 'FAILED'));
 
             if (!$audioPath) {
-                throw new \Exception('S3 putFileAs returned false/null');
+                throw new \Exception('S3 upload returned false/null');
             }
+
         } catch (\Aws\S3\Exception\S3Exception $e) {
             \Log::error('AWS S3 Error: ' . $e->getMessage());
             \Log::error('AWS Error Code: ' . $e->getAwsErrorCode());
@@ -128,6 +129,7 @@ public function store(Request $request)
             'file_path'   => $audioUrl,    // Store full URL
             'cover_image' => $coverUrl,    // Store full URL
         ]);
+        
 
         return response()->json([
             'message' => 'Song uploaded successfully!',
@@ -144,6 +146,7 @@ public function store(Request $request)
 }
     // ================================
     // 3. Show Song
+    
     // ================================
     public function show($id)
     {
@@ -159,6 +162,8 @@ public function store(Request $request)
             'duration'    => $song->duration,
             'file_size'   => $song->file_size,
         ]);
+
+
     }
 
     // ================================

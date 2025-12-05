@@ -1,12 +1,16 @@
 <?php
 
-// routes/api.php
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\AuthController;
 use App\Http\Controllers\SongController;
 use App\Http\Controllers\PlaylistController;
 use Illuminate\Support\Facades\Storage;
 use App\Models\Song;
+
+// ================================
+// PUBLIC ROUTES (No Authentication Required)
+// ================================
 
 Route::get('/test', function () {
     return response()->json([
@@ -15,56 +19,118 @@ Route::get('/test', function () {
     ]);
 });
 
-Route::get('/fix-all-songs', function() {
-    $songs = Song::all();
-    $fixed = [];
+// Authentication Routes
+Route::post('/register', [AuthController::class, 'register']);
+Route::post('/login', [AuthController::class, 'login']);
+
+// ================================
+// PROTECTED ROUTES (Authentication Required)
+// ================================
+
+Route::middleware('auth:api')->group(function () {
     
-    foreach ($songs as $song) {
-        try {
-            // Set file to public
-            if ($song->file_path && Storage::disk('s3')->exists($song->file_path)) {
-                Storage::disk('s3')->setVisibility($song->file_path, 'public');
-                $fixed[] = $song->title . ' - audio fixed';
+    // Auth Routes
+    Route::post('/logout', [AuthController::class, 'logout']);
+    Route::get('/user', [AuthController::class, 'user']);
+    
+    // ================================
+    // SONG ROUTES
+    // ================================
+    Route::get('/songs', [SongController::class, 'index']);
+    Route::post('/songs', [SongController::class, 'store']);
+    
+    // Specific routes MUST come before generic {id} routes
+    Route::get('/songs/{id}/signed-url', [SongController::class, 'getSignedUrl']);
+    Route::get('/songs/{id}/stream', [SongController::class, 'streamAudio']);
+    
+    // Generic {id} routes come LAST
+    Route::get('/songs/{id}', [SongController::class, 'show']);
+    Route::delete('/songs/{id}', [SongController::class, 'destroy']);
+    
+    // ================================
+    // PLAYLIST ROUTES
+    // ================================
+    Route::get('/playlists', [PlaylistController::class, 'index']);
+    Route::post('/playlists', [PlaylistController::class, 'store']);
+    
+    // ================================
+    // UTILITY/DEBUG ROUTES (Keep protected)
+    // ================================
+    
+    Route::get('/fix-all-songs', function() {
+        $songs = Song::all();
+        $fixed = [];
+        
+        foreach ($songs as $song) {
+            try {
+                // Set file to public
+                if ($song->file_path && Storage::disk('s3')->exists($song->file_path)) {
+                    Storage::disk('s3')->setVisibility($song->file_path, 'public');
+                    $fixed[] = $song->title . ' - audio fixed';
+                }
+                
+                // Set cover to public
+                if ($song->cover_image && Storage::disk('s3')->exists($song->cover_image)) {
+                    Storage::disk('s3')->setVisibility($song->cover_image, 'public');
+                    $fixed[] = $song->title . ' - cover fixed';
+                }
+            } catch (\Exception $e) {
+                $fixed[] = $song->title . ' - ERROR: ' . $e->getMessage();
             }
-            
-            // Set cover to public
-            if ($song->cover_image && Storage::disk('s3')->exists($song->cover_image)) {
-                Storage::disk('s3')->setVisibility($song->cover_image, 'public');
-                $fixed[] = $song->title . ' - cover fixed';
-            }
-        } catch (\Exception $e) {
-            $fixed[] = $song->title . ' - ERROR: ' . $e->getMessage();
         }
-    }
+        
+        return response()->json([
+            'message' => 'Fixed permissions',
+            'results' => $fixed
+        ]);
+    });
     
-    return response()->json([
-        'message' => 'Fixed permissions',
-        'results' => $fixed
-    ]);
+    Route::get('/test-song-url/{id}', function($id) {
+        $song = Song::findOrFail($id);
+        
+        return response()->json([
+            'song_id' => $song->id,
+            'title' => $song->title,
+            'file_path' => $song->file_path,
+            'url_valid' => filter_var($song->file_path, FILTER_VALIDATE_URL) ? 'YES' : 'NO',
+            'test_fetch' => 'Try opening the URL in a new browser tab',
+        ]);
+    });
+    
+    Route::get('/fix-song-urls', function() {
+        $songs = Song::all();
+        $fixed = [];
+        
+        foreach ($songs as $song) {
+            $originalUrl = $song->file_path;
+            
+            // Remove backslashes
+            $cleanUrl = str_replace('\\/', '/', $originalUrl);
+            
+            if ($originalUrl !== $cleanUrl) {
+                $song->file_path = $cleanUrl;
+                
+                // Also fix cover_image if it exists
+                if ($song->cover_image) {
+                    $song->cover_image = str_replace('\\/', '/', $song->cover_image);
+                }
+                
+                $song->save();
+                $fixed[] = $song->title . ' - URL fixed';
+            }
+        }
+        
+        return response()->json([
+            'message' => 'Fixed all song URLs',
+            'fixed_count' => count($fixed),
+            'details' => $fixed
+        ]);
+    });
 });
 
 // ================================
-// SONG ROUTES (Fixed Order)
+// DEBUG/TEST ROUTES (Public for testing - Remove in production)
 // ================================
-// IMPORTANT: More specific routes MUST come BEFORE dynamic {id} routes
-
-Route::get('/songs', [SongController::class, 'index']);
-Route::post('/songs', [SongController::class, 'store']);
-
-// These specific routes MUST be before /songs/{id}
-Route::get('/songs/{id}/signed-url', [SongController::class, 'getSignedUrl']);
-Route::get('/songs/{id}/stream', [SongController::class, 'streamAudio']);
-
-// Generic {id} routes come LAST
-Route::get('/songs/{id}', [SongController::class, 'show']);
-Route::delete('/songs/{id}', [SongController::class, 'destroy']);
-
-// ================================
-// PLAYLIST ROUTES
-// ================================
-Route::get('/playlists', [PlaylistController::class, 'index']);
-Route::post('/playlists', [PlaylistController::class, 'store']);
-
 
 Route::post('/test-upload', function(Request $request) {
     \Log::info('Request data:', $request->all());
@@ -84,6 +150,7 @@ Route::post('/test-upload', function(Request $request) {
     
     return response()->json(['message' => 'File received OK']);
 });
+
 Route::get('/test-s3-permissions', function() {
     try {
         // Test write
@@ -103,14 +170,23 @@ Route::get('/test-s3-permissions', function() {
     } catch (\Exception $e) {
         return response()->json([
             'error' => $e->getMessage(),
-            'hint' => 'Add s3:PutObject permission tglkjrthklkjy your IAM user'
+            'hint' => 'Add s3:PutObject permission to your IAM user'
         ], 500);
     }
 });
 
-// Add this test route to verify everything:
 Route::get('/verify-s3-setup', function() {
     $config = config('filesystems.disks.s3');
+    
+    $uploadTest = function() {
+        try {
+            $result = Storage::disk('s3')->put('test.txt', 'hello');
+            Storage::disk('s3')->delete('test.txt');
+            return $result ? 'SUCCESS ✅' : 'FAILED ❌';
+        } catch (\Exception $e) {
+            return 'ERROR: ' . $e->getMessage();
+        }
+    };
     
     return response()->json([
         'bucket' => $config['bucket'],
@@ -118,33 +194,9 @@ Route::get('/verify-s3-setup', function() {
         'has_visibility' => isset($config['visibility']) ? $config['visibility'] : 'Not set (Good!)',
         'has_acl_options' => isset($config['options']['ACL']) ? 'YES (Remove this!)' : 'No (Good!)',
         'throw_enabled' => $config['throw'] ?? false,
-        
-        // Test upload
-        'upload_test' => function() {
-            try {
-                $result = Storage::disk('s3')->put('test.txt', 'hello');
-                Storage::disk('s3')->delete('test.txt');
-                return $result ? 'SUCCESS ✅' : 'FAILED ❌';
-            } catch (\Exception $e) {
-                return 'ERROR: ' . $e->getMessage();
-            }
-        }
+        'upload_test' => $uploadTest()
     ]);
 });
-
-
-Route::get('/test-song-url/{id}', function($id) {
-    $song = Song::findOrFail($id);
-    
-    return response()->json([
-        'song_id' => $song->id,
-        'title' => $song->title,
-        'file_path' => $song->file_path,
-        'url_valid' => filter_var($song->file_path, FILTER_VALIDATE_URL) ? 'YES' : 'NO',
-        'test_fetch' => 'Try opening the URL in a new browser tab',
-    ]);
-});
-
 
 Route::get('/check-acl-status', function() {
     try {
@@ -161,4 +213,3 @@ Route::get('/check-acl-status', function() {
         ]);
     }
 });
-

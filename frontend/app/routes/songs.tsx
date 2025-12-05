@@ -1,6 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { Music, Play, Pause, SkipBack, SkipForward, Volume2, Heart, Search, Home, Library, Plus } from 'lucide-react';
+import { Music, Play, Pause, SkipBack, SkipForward, Volume2, Heart, Search, Home, Library, Plus, LogOut } from 'lucide-react';
 
+// Props interface for the component
+interface SongsProps {
+  token: string;
+  user: any;
+  onLogout: () => void;
+}
+
+// Song data interface
 interface Song {
   id: number;
   title: string;
@@ -11,7 +19,7 @@ interface Song {
   cover_image?: string;
 }
 
-export default function SpotifyLandingPage() {
+export default function Songs({ token, user, onLogout }: SongsProps) {
   const [songs, setSongs] = useState<Song[]>([]);
   const [currentSong, setCurrentSong] = useState<Song | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -54,7 +62,11 @@ export default function SpotifyLandingPage() {
 
   const fetchSongs = async () => {
     try {
-      const response = await fetch('http://127.0.0.1:8000/api/songs');
+      const response = await fetch('http://127.0.0.1:8000/api/songs', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
       const data = await response.json();
       setSongs(data);
     } catch (error) {
@@ -127,8 +139,10 @@ export default function SpotifyLandingPage() {
     try {
       const response = await fetch('http://127.0.0.1:8000/api/songs', {
         method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
         body: formData,
-        
       });
 
       if (response.ok) {
@@ -152,8 +166,6 @@ export default function SpotifyLandingPage() {
     song.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
     song.artist.toLowerCase().includes(searchQuery.toLowerCase())
   );
-
-  
 
   return (
     <div className="flex h-screen bg-black text-white">
@@ -188,6 +200,22 @@ export default function SpotifyLandingPage() {
             <span className="font-medium">Upload Song</span>
           </button>
         </nav>
+
+        {/* User Info & Logout */}
+        <div className="mt-auto pt-6 border-t border-gray-800">
+          <div className="mb-4">
+            <p className="text-sm text-gray-400">Logged in as</p>
+            <p className="font-medium truncate">{user?.name}</p>
+            <p className="text-xs text-gray-500 truncate">{user?.email}</p>
+          </div>
+          <button
+            onClick={onLogout}
+            className="w-full px-4 py-3 bg-red-600 hover:bg-red-700 rounded-lg transition flex items-center justify-center gap-2"
+          >
+            <LogOut className="w-4 h-4" />
+            <span>Logout</span>
+          </button>
+        </div>
       </aside>
 
       {/* Main Content */}

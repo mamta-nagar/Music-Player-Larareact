@@ -213,3 +213,12 @@ Route::get('/check-acl-status', function() {
         ]);
     }
 });
+
+use App\Http\Controllers\Api\PlaybackController;
+
+Route::prefix('playback')->group(function () {
+    Route::get('/session', [PlaybackController::class, 'getSession']);
+    Route::post('/update', [PlaybackController::class, 'updateState']);
+    Route::post('/device/register', [PlaybackController::class, 'registerDevice']);
+    Route::get('/devices', [PlaybackController::class, 'getDevices']);
+});

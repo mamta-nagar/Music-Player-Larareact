@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Music, Play, Pause, SkipBack, SkipForward, Volume2, Heart, Search, Home, Library, Plus, LogOut } from 'lucide-react';
+import { useMultiDevicePlayback } from '../hooks/useMultiDevicePlayback';
+
 
 // Props interface for the component
 interface SongsProps {
@@ -20,6 +22,8 @@ interface Song {
 }
 
 export default function Songs({ token, user, onLogout }: SongsProps) {
+ const { playbackState: syncedState, updatePlayback, sessionId, deviceId } = useMultiDevicePlayback(token);
+
   const [songs, setSongs] = useState<Song[]>([]);
   const [currentSong, setCurrentSong] = useState<Song | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -28,6 +32,8 @@ export default function Songs({ token, user, onLogout }: SongsProps) {
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [connectedDevices, setConnectedDevices] = useState<any[]>([]);
+  const [showDevicesModal, setShowDevicesModal] = useState(false);
 
   // Upload form state
   const [title, setTitle] = useState('');
@@ -35,6 +41,46 @@ export default function Songs({ token, user, onLogout }: SongsProps) {
   const [description, setDescription] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [uploadMessage, setUploadMessage] = useState('');
+  
+
+  useEffect(() => {
+    if (syncedState.current_song && syncedState.current_song.id !== currentSong?.id) {
+      const song = songs.find(s => s.id === syncedState.current_song_id);
+      if (song) {
+        setCurrentSong(song);
+        if (audioElement) {
+          audioElement.src = song.file_path;
+          if (syncedState.is_playing) {
+            audioElement.play();
+          }
+        }
+      }
+    }
+  }, [syncedState.current_song_id]);
+
+
+  useEffect(() => {
+    if (audioElement) {
+      if (syncedState.is_playing && !isPlaying) {
+        audioElement.play();
+        setIsPlaying(true);
+      } else if (!syncedState.is_playing && isPlaying) {
+        audioElement.pause();
+        setIsPlaying(false);
+      }
+    }
+  }, [syncedState.is_playing]);
+
+
+  useEffect(() => {
+    if (audioElement && syncedState.current_time) {
+      const diff = Math.abs(audioElement.currentTime - syncedState.current_time);
+      if (diff > 2) {
+        audioElement.currentTime = syncedState.current_time;
+        setCurrentTime(syncedState.current_time);
+      }
+    }
+  }, [syncedState.current_time]);
 
   useEffect(() => {
     fetchSongs();
@@ -80,15 +126,22 @@ export default function Songs({ token, user, onLogout }: SongsProps) {
         if (isPlaying) {
           audioElement.pause();
           setIsPlaying(false);
+          updatePlayback({ is_playing: false });
         } else {
           audioElement.play();
           setIsPlaying(true);
+          updatePlayback({ is_playing: true });
         }
       } else {
         audioElement.src = song.file_path;
         audioElement.play();
         setCurrentSong(song);
         setIsPlaying(true);
+        updatePlayback({ 
+          current_song_id: song.id,
+          is_playing: true,
+          current_time: 0
+        });
       }
     }
   };
@@ -97,23 +150,36 @@ export default function Songs({ token, user, onLogout }: SongsProps) {
     if (currentSong && songs.length > 0) {
       const currentIndex = songs.findIndex(s => s.id === currentSong.id);
       const nextIndex = (currentIndex + 1) % songs.length;
-      playSong(songs[nextIndex]);
+      const nextSong = songs[nextIndex];
+      playSong(nextSong);
+      updatePlayback({ 
+        current_song_id: nextSong.id,
+        current_time: 0,
+        is_playing: true 
+      });
     }
   };
 
-  const handlePrevious = () => {
+   const handlePrevious = () => {
     if (currentSong && songs.length > 0) {
       const currentIndex = songs.findIndex(s => s.id === currentSong.id);
       const prevIndex = currentIndex === 0 ? songs.length - 1 : currentIndex - 1;
-      playSong(songs[prevIndex]);
+      const prevSong = songs[prevIndex];
+      playSong(prevSong);
+      updatePlayback({ 
+        current_song_id: prevSong.id,
+        current_time: 0,
+        is_playing: true 
+      });
     }
   };
 
-  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
+   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newTime = parseFloat(e.target.value);
     if (audioElement) {
       audioElement.currentTime = newTime;
       setCurrentTime(newTime);
+      updatePlayback({ current_time: newTime });
     }
   };
 
@@ -166,7 +232,36 @@ export default function Songs({ token, user, onLogout }: SongsProps) {
     song.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
     song.artist.toLowerCase().includes(searchQuery.toLowerCase())
   );
+  
 
+    // 🆕 ADD THIS - Fetch connected devices
+  const fetchDevices = async () => {
+    if (!sessionId) return;
+    
+    try {
+      const response = await fetch(`http://127.0.0.1:8000/api/playback/devices?session_id=${sessionId}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+      const data = await response.json();
+      setConnectedDevices(Object.entries(data.devices || {}).map(([id, info]: any) => ({
+        id,
+        ...info,
+      })));
+    } catch (error) {
+      console.error('Failed to fetch devices:', error);
+    }
+  };
+  useEffect(() => {
+    if (sessionId) {
+      fetchDevices();
+      // Refresh devices every 30 seconds
+      const interval = setInterval(fetchDevices, 30000);
+      return () => clearInterval(interval);
+    }
+  }, [sessionId]);
+  
   return (
     <div className="flex h-screen bg-black text-white">
       {/* Sidebar */}
@@ -416,6 +511,8 @@ export default function Songs({ token, user, onLogout }: SongsProps) {
               >
                 Upload Song
               </button>
+
+
 
               {uploadMessage && (
                 <p className="text-center text-sm">{uploadMessage}</p>

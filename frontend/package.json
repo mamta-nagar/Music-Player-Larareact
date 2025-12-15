@@ -13,7 +13,9 @@
     "@react-router/serve": "^7.9.2",
     "axios": "^1.13.1",
     "isbot": "^5.1.31",
+    "laravel-echo": "^2.2.6",
     "lucide-react": "^0.553.0",
+    "pusher-js": "^8.4.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-router": "^7.9.2"
